@@ -33,3 +33,12 @@ terraform.rc
 
 # MacOS / system files
 .DS_Store
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+values.secret.yaml
+*.pem
+*.key
+*.crt
