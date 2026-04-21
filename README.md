@@ -7,6 +7,8 @@
 - збірка Docker image
 - push image в Amazon ECR
 - деплой у Amazon EKS через Helm
+- CI/CD через Jenkins + Kaniko + GitOps repo
+- автоматична синхронізація через Argo CD
 
 Простіше кажучи: тут зібраний базовий DevOps pipeline для Django.
 
@@ -20,9 +22,15 @@ docker/
 
 terraform/
 ├── backend.tf             # S3 backend для Terraform state
+├── ci-cd.tf               # Підключення модулів Jenkins і Argo CD
 ├── main.tf                # Головний Terraform конфіг
 ├── outputs.tf             # Корисні outputs
+├── variables.tf           # Параметри для CI/CD та Helm-релізів
+├── versions.tf            # Піни провайдерів Terraform
 └── modules/
+    ├── ci-iam/            # IAM role + OIDC provider для Jenkins agent
+    ├── jenkins/           # Helm-установка Jenkins як окремий модуль
+    ├── argo_cd/           # Helm-установка Argo CD і bootstrap chart
     ├── ecr/               # ECR репозиторій
     ├── eks/               # EKS кластер і node group
     ├── s3-backend/        # Приклад backend-модуля
@@ -30,6 +38,33 @@ terraform/
 
 helm/
 └── django-chart/          # Helm chart для Django, Postgres і Nginx
+
+Jenkinsfile                # Jenkins pipeline для build/push/update GitOps repo
+argocd/application.yaml    # Приклад Argo CD Application manifest
+```
+
+Детальніше модулі CI/CD тепер мають таку структуру:
+
+```text
+terraform/modules/jenkins/
+├── jenkins.tf
+├── variables.tf
+├── providers.tf
+├── values.yaml
+└── outputs.tf
+
+terraform/modules/argo_cd/
+├── argo_cd.tf
+├── variables.tf
+├── providers.tf
+├── values.yaml
+├── outputs.tf
+└── charts/
+    ├── Chart.yaml
+    ├── values.yaml
+    └── templates/
+        ├── application.yaml
+        └── repository.yaml
 ```
 
 ## Що створює Terraform
@@ -44,6 +79,10 @@ helm/
 - ECR репозиторій `goit-ecr`
 - EKS кластер `goit-eks`
 - node group для EKS
+- Jenkins, встановлений через окремий Terraform-модуль + Helm
+- Argo CD, встановлений через окремий Terraform-модуль + Helm
+- IAM role для `jenkins-agent` через IRSA
+- Argo CD bootstrap chart для `Application` і `Repository` ресурсів
 
 ## Що потрібно перед стартом
 
@@ -63,6 +102,8 @@ helm/
 - EKS
 - S3
 - DynamoDB
+
+Для нового CI/CD ланцюжка додатково потрібен окремий GitOps-репозиторій, у якому лежить Helm chart або `values.yaml`, що відстежується Argo CD.
 
 ## Секрети і локальні файли
 
@@ -145,19 +186,27 @@ docker compose up --build
 Типовий порядок роботи виглядає так:
 
 1. Підняти інфраструктуру через Terraform
-2. Перевірити, що EKS і ECR створилися
-3. Зібрати Docker image
-4. Запушити image в ECR
-5. Підключитися до EKS
-6. Задеплоїти застосунок через Helm
+2. Перевірити, що EKS, ECR, Jenkins і Argo CD створилися
+3. Додати credentials у Jenkins
+4. Запустити Jenkins pipeline
+5. Дочекатися, поки Jenkins оновить GitOps-репозиторій
+6. Дочекатися, поки Argo CD автоматично синхронізує зміни у кластері
 
 ## 1. Підняти інфраструктуру
 
 ```bash
 cd terraform
+cp terraform.tfvars.example terraform.tfvars
 terraform init -reconfigure
 terraform plan
 terraform apply
+```
+
+Мінімально в `terraform.tfvars` треба заповнити:
+
+```hcl
+jenkins_admin_password = "change-me"
+argocd_repo_url        = "https://github.com/ValeriiaSeliverstova/DevOps-CI-CD-gitops.git"
 ```
 
 Після створення інфраструктури зазвичай переглядають outputs:
@@ -181,53 +230,94 @@ aws eks update-kubeconfig --region us-west-2 --name goit-eks
 kubectl get nodes
 ```
 
-## 3. Зібрати Docker image
+## 3. Налаштувати Jenkins
 
-Образ доцільно збирати під `linux/amd64`, щоб він коректно запускався на EKS-нoдах:
+Після `terraform apply` Jenkins встановлюється в namespace `jenkins`.
 
-```bash
-docker buildx build --platform linux/amd64 -t django-app ./docker/django --load
-docker image ls
-```
-
-## 4. Запушити image в ECR
+Щоб увійти локально:
 
 ```bash
-aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 143536904714.dkr.ecr.us-west-2.amazonaws.com
-docker tag django-app:latest 143536904714.dkr.ecr.us-west-2.amazonaws.com/goit-ecr:latest
-docker push 143536904714.dkr.ecr.us-west-2.amazonaws.com/goit-ecr:latest
-aws ecr describe-images --repository-name goit-ecr --region us-west-2
+kubectl -n jenkins port-forward svc/jenkins 8080:8080
 ```
 
-## 5. Задеплоїти через Helm
+Логін і пароль беруться з `terraform.tfvars`.
 
-У chart зараз використовується така схема:
+У Jenkins треба додати credentials:
 
-- Django працює за внутрішнім `ClusterIP` service
-- Nginx публікується назовні через `LoadBalancer`
-- Postgres запускається всередині кластера як окремий pod
+- `gitops-repo-creds` типу `Username with password`
+- цей credential використовується для push у GitOps-репозиторій
 
-Перший деплой:
+Потім створіть Pipeline job на основі [`Jenkinsfile`](./Jenkinsfile).
+
+Важливі параметри job:
+
+- `AWS_REGION`
+- `ECR_REGISTRY`
+- `ECR_REPOSITORY`
+- `GITOPS_REPO_URL`
+- `GITOPS_VALUES_FILE`
+- `GITOPS_BRANCH`
+
+## 4. Що робить Jenkins pipeline
+
+Pipeline запускається в Kubernetes Agent pod із трьома контейнерами:
+
+- `kaniko` для збірки образу
+- `git` для checkout/push
+- `python` для безпечного оновлення `values.yaml`
+
+Сам pipeline:
+
+1. забирає код застосунку
+2. генерує тег образу як `${BUILD_NUMBER}-${GIT_SHA}`
+3. збирає Docker image із `docker/django/Dockerfile`
+4. пушить image в ECR
+5. клонує GitOps-репозиторій
+6. оновлює `image.repository` та `image.tag` у `values.yaml`
+7. комітить і пушить зміни в `main`
+
+`kaniko` пушить в ECR без статичних AWS ключів: для цього Terraform створює IRSA role й підв’язує її до service account `jenkins-agent`.
+
+## 5. Налаштувати Argo CD
+
+Argo CD встановлюється через Helm у namespace `argocd`.
+
+Для локального входу:
 
 ```bash
-helm install django-app ./helm/django-chart -f helm/django-chart/values.secret.yaml
+kubectl -n argocd port-forward svc/argocd-server 8081:80
 ```
 
-Оновлення:
+Application створюється локальним Helm chart у модулі `terraform/modules/argo_cd/charts` і стежить за:
 
-```bash
-helm upgrade --install django-app ./helm/django-chart -f helm/django-chart/values.secret.yaml
-```
+- `argocd_repo_url`
+- `argocd_repo_path`
+- `argocd_target_revision`
+
+Увімкнений `automated` sync із:
+
+- `prune: true`
+- `selfHeal: true`
+- `CreateNamespace=true`
+
+Приклад окремого маніфесту також є у [`argocd/application.yaml`](./argocd/application.yaml), але основний сценарій тепер іде через модуль `argo_cd`.
+
+## 6. GitOps flow
+
+Після успішного Jenkins build відбувається такий ланцюжок:
+
+1. новий image тег пушиться в ECR
+2. Jenkins комітить новий тег у GitOps-репозиторій
+3. Argo CD бачить зміну в Git
+4. Argo CD автоматично синхронізує Helm chart у кластері
 
 Перевірка:
 
 ```bash
-kubectl get pods
-kubectl get svc
-kubectl get pvc
+kubectl get pods -n django-app
+kubectl get svc -n django-app
+kubectl get applications -n argocd
 ```
-
-Після появи `EXTERNAL-IP` у сервісі `django-app-nginx` застосунок стає доступним у браузері.
 
 ## Що важливо знати про поточний Helm chart
 
@@ -251,6 +341,8 @@ kubectl get pvc
 - увімкнути persistence
 - перевірити `StorageClass`
 - винести секрети в безпечніше сховище
+- винести пароль Postgres та інші secret values з Git у External Secrets / AWS Secrets Manager
+- додати webhook-тригер Jenkins job від Git-події
 
 Ще одна практична деталь: кластер на `t3.micro` дуже маленький. Якщо частина pod-ів зависає в `Pending`, це часто не помилка chart, а нестача місця на нодах.
 
