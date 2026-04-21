@@ -8,21 +8,23 @@ controller:
     - configuration-as-code
     - job-dsl
     - github
-  installLatestPlugins: false
+  installLatestPlugins: true
   numExecutors: 0
   executorMode: NORMAL
   resources:
     requests:
-      cpu: "500m"
-      memory: "1Gi"
+      cpu: "100m"
+      memory: "256Mi"
     limits:
-      cpu: "1000m"
-      memory: "2Gi"
+      cpu: "500m"
+      memory: "768Mi"
   persistence:
-    enabled: true
-    size: 8Gi
+    enabled: false
   JCasC:
     defaultConfig: true
+
+persistence:
+  enabled: false
 
 agent:
   enabled: true

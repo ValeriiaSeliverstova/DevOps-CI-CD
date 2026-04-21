@@ -37,7 +37,7 @@ terraform/
     └── vpc/               # VPC, subnets, route tables, IGW, NAT
 
 helm/
-└── django-chart/          # Helm chart для Django, Postgres і Nginx
+└── django-chart/          # Helm chart для Django і Postgres
 
 Jenkinsfile                # Jenkins pipeline для build/push/update GitOps repo
 argocd/application.yaml    # Приклад Argo CD Application manifest
@@ -201,6 +201,35 @@ terraform init -reconfigure
 terraform plan
 terraform apply
 ```
+
+Рекомендований порядок запуску тепер двоетапний.
+
+Перший етап:
+
+```hcl
+enable_ci_cd = false
+```
+
+Створюються тільки:
+
+- VPC
+- ECR
+- EKS
+
+Другий етап, коли кластер вже існує:
+
+```hcl
+enable_ci_cd = true
+```
+
+Після цього знову виконайте:
+
+```bash
+terraform plan
+terraform apply
+```
+
+На другому етапі Terraform вже встановить Jenkins і Argo CD всередину готового EKS.
 
 Мінімально в `terraform.tfvars` треба заповнити:
 

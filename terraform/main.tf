@@ -31,4 +31,8 @@ module "eks" {
   cluster_name    = "goit-eks"
   subnet_ids      = module.vpc.private_subnets
   node_subnet_ids = module.vpc.private_subnets
+  node_instance_types = ["t3.small"]
+  node_desired_size   = 3
+  node_min_size       = 2
+  node_max_size       = 3
 }

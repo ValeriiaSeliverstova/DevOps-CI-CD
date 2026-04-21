@@ -1,15 +1,23 @@
+provider "aws" {
+  region = var.aws_region
+}
+
 data "aws_eks_cluster" "this" {
-  name = module.eks.cluster_name
+  name = var.cluster_name
 }
 
 data "aws_eks_cluster_auth" "this" {
-  name = module.eks.cluster_name
+  name = var.cluster_name
+}
+
+data "aws_ecr_repository" "this" {
+  name = var.ecr_repository_name
 }
 
 module "jenkins" {
-  source = "./modules/jenkins"
+  source = "../modules/jenkins"
 
-  cluster_name           = module.eks.cluster_name
+  cluster_name           = data.aws_eks_cluster.this.name
   cluster_host           = data.aws_eks_cluster.this.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
   cluster_token          = data.aws_eks_cluster_auth.this.token
@@ -18,11 +26,11 @@ module "jenkins" {
   admin_username     = var.jenkins_admin_username
   admin_password     = var.jenkins_admin_password
   chart_version      = var.jenkins_chart_version
-  ecr_repository_arn = module.ecr.repository_arn
+  ecr_repository_arn = data.aws_ecr_repository.this.arn
 }
 
 module "argo_cd" {
-  source = "./modules/argo_cd"
+  source = "../modules/argo_cd"
 
   cluster_host           = data.aws_eks_cluster.this.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
