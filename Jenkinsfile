@@ -36,11 +36,9 @@ spec:
   }
 
   options {
-    ansiColor('xterm')
     buildDiscarder(logRotator(numToKeepStr: '20'))
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
-    timestamps()
   }
 
   parameters {
