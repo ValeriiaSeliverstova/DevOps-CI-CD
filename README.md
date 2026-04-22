@@ -2,8 +2,6 @@
 
 Це навчальний проєкт, у якому Django-застосунок проходить повний шлях від коду до деплою в Kubernetes.
 
-Тут є:
-
 - локальний запуск через Docker Compose
 - AWS інфраструктура через Terraform
 - Docker image у Amazon ECR
@@ -13,8 +11,6 @@
 - автоматичний деплой застосунку в Kubernetes
 
 ## Що вийшло в результаті
-
-У фіналі ми отримали:
 
 - EKS кластер в AWS
 - Jenkins, встановлений через Helm
@@ -39,7 +35,7 @@ helm/
 └── django-chart/           # Локальний Helm chart для застосунку
 
 terraform/
-├── main.tf                 # VPC + ECR + EKS
+├── main.tf                 # VPC + ECR + EKS + optional RDS/Aurora
 ├── outputs.tf
 ├── variables.tf
 ├── versions.tf
@@ -56,6 +52,7 @@ terraform/
     ├── vpc/
     ├── ecr/
     ├── eks/
+    ├── rds/
     ├── ci-iam/
     ├── jenkins/
     └── argo_cd/
@@ -66,8 +63,6 @@ README.md
 ```
 
 ## Як проходить деплой
-
-Логіка тут проста:
 
 1. Код лежить у цьому репозиторії.
 2. Jenkins читає `Jenkinsfile`.
@@ -116,6 +111,7 @@ https://github.com/ValeriiaSeliverstova/DevOps-CI-CD-gitops.git
 - ECR repository `goit-ecr`
 - EKS cluster `goit-eks`
 - node group на `t3.small`
+- optional: RDS instance або Aurora cluster
 - Jenkins у namespace `jenkins`
 - Argo CD у namespace `argocd`
 
@@ -136,6 +132,7 @@ terraform/
 - VPC
 - ECR
 - EKS
+- за потреби: RDS або Aurora через модуль `rds`
 
 ### 2. CI/CD сервіси
 
@@ -179,6 +176,104 @@ kubectl get pods -A
 - `max_size = 3`
 
 Це важливо, бо на `t3.micro` Jenkins і Argo CD разом не влазили.
+
+## Модуль RDS
+
+У `terraform/modules/rds` є окремий універсальний модуль для бази даних.
+
+Він може створювати:
+
+- звичайний `RDS instance`
+- або `Aurora cluster`
+
+Перемикач простий:
+
+```hcl
+use_aurora = true
+```
+
+Якщо `use_aurora = false`, створюються:
+
+- `aws_db_subnet_group`
+- `aws_security_group`
+- `aws_db_parameter_group`
+- `aws_db_instance`
+
+Якщо `use_aurora = true`, створюються:
+
+- `aws_db_subnet_group`
+- `aws_security_group`
+- `aws_rds_cluster_parameter_group`
+- `aws_rds_cluster`
+- `writer`
+- `reader replicas`
+
+## Приклад підключення модуля
+
+### Звичайний PostgreSQL RDS
+
+```hcl
+module "rds" {
+  source = "./modules/rds"
+
+  name                       = "myapp-db"
+  use_aurora                 = false
+  engine                     = "postgres"
+  engine_version             = "14.22"
+  parameter_group_family_rds = "postgres14"
+
+  instance_class          = "db.t3.micro"
+  allocated_storage       = 20
+  db_name                 = "myapp"
+  username                = "postgres"
+  password                = "admin123AWS23"
+  subnet_private_ids      = module.vpc.private_subnets
+  subnet_public_ids       = module.vpc.public_subnets
+  publicly_accessible     = false
+  vpc_id                  = module.vpc.vpc_id
+  multi_az                = false
+  backup_retention_period = "7"
+
+  parameters = {
+    max_connections = "200"
+  }
+
+  tags = {
+    Environment = "dev"
+    Project     = "myapp"
+  }
+}
+```
+
+## Як змінити тип БД
+
+Для звичайного RDS:
+
+```hcl
+use_aurora = false
+engine     = "postgres"
+```
+
+або
+
+```hcl
+use_aurora = false
+engine     = "mysql"
+```
+
+Для Aurora:
+
+```hcl
+use_aurora     = true
+engine_cluster = "aurora-postgresql"
+```
+
+або
+
+```hcl
+use_aurora     = true
+engine_cluster = "aurora-mysql"
+```
 
 ### Крок 2. Jenkins + Argo CD
 
@@ -293,8 +388,6 @@ Pipeline робить таке:
 - додати `POSTGRES_PASSWORD` у GitOps chart
 
 ## Поточний робочий сценарій
-
-Реально перевірений сценарій такий:
 
 1. Зміна потрапляє в repo
 2. Jenkins запускає pipeline
@@ -417,7 +510,7 @@ aws ecr describe-repositories --region us-west-2
 
 ## Підсумок
 
-У цьому проєкті вийшов робочий навчальний CI/CD ланцюжок:
+CI/CD ланцюжок:
 
 - Terraform створює AWS інфраструктуру
 - Jenkins будує image і пушить його в ECR

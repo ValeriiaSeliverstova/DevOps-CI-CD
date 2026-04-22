@@ -1,1 +1,29 @@
 aws_region = "us-west-2"
+enable_rds = false
+
+# Example config for standard PostgreSQL RDS
+# enable_rds                      = true
+# rds_use_aurora                 = false
+# rds_engine                     = "postgres"
+# rds_engine_version             = "14.22"
+# rds_parameter_group_family_rds = "postgres14"
+# rds_instance_class             = "db.t3.micro"
+# rds_allocated_storage          = 20
+# rds_db_name                    = "myapp"
+# rds_username                   = "postgres"
+# rds_password                   = "change-me-db-password"
+# rds_publicly_accessible        = false
+# rds_multi_az                   = false
+# rds_backup_retention_period    = "7"
+#
+# rds_parameters = {
+#   max_connections = "200"
+# }
+
+# Aurora PostgreSQL example
+# rds_use_aurora                    = true
+# rds_engine_cluster                = "aurora-postgresql"
+# rds_engine_version_cluster        = "15.3"
+# rds_parameter_group_family_aurora = "aurora-postgresql15"
+# rds_aurora_replica_count          = 1
+# rds_instance_class                = "db.t3.medium"

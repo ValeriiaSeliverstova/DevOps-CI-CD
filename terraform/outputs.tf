@@ -51,3 +51,19 @@ output "eks_node_group_name" {
 output "kubectl_config_command" {
   value = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
 }
+
+output "rds_endpoint" {
+  value = var.enable_rds ? module.rds[0].endpoint : null
+}
+
+output "rds_reader_endpoint" {
+  value = var.enable_rds ? module.rds[0].reader_endpoint : null
+}
+
+output "rds_security_group_id" {
+  value = var.enable_rds ? module.rds[0].security_group_id : null
+}
+
+output "rds_parameter_group_name" {
+  value = var.enable_rds ? module.rds[0].parameter_group_name : null
+}
