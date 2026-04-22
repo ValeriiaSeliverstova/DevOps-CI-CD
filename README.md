@@ -428,3 +428,5 @@ aws ecr describe-repositories --region us-west-2
 ```text
 GitHub -> Jenkins -> ECR -> GitOps repo -> Argo CD -> EKS
 ```
+
+![alt text](image.png)
