@@ -122,12 +122,12 @@ if not match:
 
 block = match.group(1)
 block = re.sub(rf'(^[ \\t]+{re.escape(repo_key)}:\\s*).*\$',
-               rf'\\1{image_name}',
+               rf'\\g<1>{image_name}',
                block,
                count=1,
                flags=re.MULTILINE)
 block = re.sub(rf'(^[ \\t]+{re.escape(tag_key)}:\\s*).*\$',
-               rf'\\1{image_tag}',
+               rf'\\g<1>{image_tag}',
                block,
                count=1,
                flags=re.MULTILINE)
