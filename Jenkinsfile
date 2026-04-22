@@ -60,6 +60,7 @@ spec:
     stage('Checkout') {
       steps {
         container('git') {
+          sh 'git config --global --add safe.directory "${WORKSPACE}"'
           checkout scm
           script {
             env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: "git rev-parse --short=8 HEAD").trim()
