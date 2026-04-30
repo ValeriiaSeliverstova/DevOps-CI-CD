@@ -46,3 +46,17 @@ module "argo_cd" {
   application_name           = var.argocd_application_name
   repositories               = var.argocd_repositories
 }
+
+module "monitoring" {
+  source = "../modules/monitoring"
+
+  cluster_host           = data.aws_eks_cluster.this.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+  cluster_token          = data.aws_eks_cluster_auth.this.token
+
+  namespace                = var.monitoring_namespace
+  prometheus_chart_version = var.prometheus_chart_version
+  grafana_chart_version    = var.grafana_chart_version
+  grafana_admin_username   = var.grafana_admin_username
+  grafana_admin_password   = var.grafana_admin_password
+}

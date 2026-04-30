@@ -8,6 +8,7 @@
 - EKS кластер
 - Jenkins для CI
 - Argo CD для GitOps
+- Prometheus і Grafana для моніторингу
 - автоматичний деплой застосунку в Kubernetes
 
 ## Що вийшло в результаті
@@ -15,6 +16,7 @@
 - EKS кластер в AWS
 - Jenkins, встановлений через Helm
 - Argo CD, встановлений через Helm
+- Prometheus і Grafana, встановлені через Helm
 - pipeline у Jenkins, який:
   - бере код з GitHub
   - збирає Docker image
@@ -55,7 +57,8 @@ terraform/
     ├── rds/
     ├── ci-iam/
     ├── jenkins/
-    └── argo_cd/
+    ├── argo_cd/
+    └── monitoring/
 
 Jenkinsfile                 # Jenkins pipeline
 argocd/application.yaml     # Приклад Application manifest
@@ -114,6 +117,7 @@ https://github.com/ValeriiaSeliverstova/DevOps-CI-CD-gitops.git
 - optional: RDS instance або Aurora cluster
 - Jenkins у namespace `jenkins`
 - Argo CD у namespace `argocd`
+- Prometheus і Grafana у namespace `monitoring`
 
 ## Чому Terraform розділений на 2 частини
 
@@ -146,8 +150,10 @@ terraform/cicd/
 
 - Jenkins
 - Argo CD
+- Prometheus
+- Grafana
 
-Це зручніше, бо Jenkins і Argo CD залежать від уже готового EKS.
+Це зручніше, бо Jenkins, Argo CD і monitoring stack залежать від уже готового EKS.
 
 ## Підняти інфраструктуру
 
@@ -289,9 +295,73 @@ terraform apply
 ```bash
 kubectl get pods -n jenkins
 kubectl get pods -n argocd
+kubectl get pods -n monitoring
 ```
 
 Очікуємо, що всі pod-и будуть у `Running`.
+
+## Моніторинг
+
+У `terraform/cicd` тепер також піднімається monitoring stack:
+
+- `Prometheus`
+- `Grafana`
+
+Ставиться це окремим Terraform-модулем:
+
+```text
+terraform/modules/monitoring
+```
+
+Всередині:
+
+- `Prometheus` ставиться Helm chart-ом `prometheus-community/prometheus`
+- `Grafana` ставиться Helm chart-ом `grafana/grafana`
+- Grafana одразу отримує datasource на внутрішній Prometheus service
+
+Щоб не перевантажувати навчальний кластер, сервіси підняті як `ClusterIP`, без persistence.
+
+## Як зайти в Prometheus
+
+```bash
+kubectl port-forward -n monitoring svc/prometheus-server 9090:80
+```
+
+Потім відкриваємо:
+
+```text
+http://localhost:9090
+```
+
+## Як зайти в Grafana
+
+```bash
+kubectl port-forward -n monitoring svc/grafana 3000:80
+```
+
+Потім відкриваємо:
+
+```text
+http://localhost:3000
+```
+
+Логін:
+
+```text
+admin
+```
+
+Пароль задається в:
+
+```text
+terraform/cicd/terraform.tfvars
+```
+
+або в прикладі:
+
+```text
+terraform/cicd/terraform.tfvars.example
+```
 
 ## Як зайти в Jenkins
 

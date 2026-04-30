@@ -3,10 +3,13 @@ cluster_name                 = "goit-eks"
 ecr_repository_name          = "goit-ecr"
 jenkins_admin_username       = "admin"
 jenkins_admin_password       = "change-me"
+grafana_admin_username       = "admin"
+grafana_admin_password       = "change-me-grafana"
 argocd_repo_url              = "https://github.com/ValeriiaSeliverstova/DevOps-CI-CD-gitops.git"
 argocd_repo_path             = "helm/django-chart"
 argocd_target_revision       = "main"
 argocd_destination_namespace = "django-app"
+monitoring_namespace         = "monitoring"
 argocd_repositories = [
   {
     name = "gitops"

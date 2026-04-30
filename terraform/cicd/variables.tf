@@ -99,3 +99,34 @@ variable "argocd_repositories" {
   }))
   default = []
 }
+
+variable "monitoring_namespace" {
+  description = "Kubernetes namespace for Prometheus and Grafana"
+  type        = string
+  default     = "monitoring"
+}
+
+variable "prometheus_chart_version" {
+  description = "Optional version of the Prometheus Helm chart"
+  type        = string
+  default     = ""
+}
+
+variable "grafana_chart_version" {
+  description = "Optional version of the Grafana Helm chart"
+  type        = string
+  default     = ""
+}
+
+variable "grafana_admin_username" {
+  description = "Grafana admin username"
+  type        = string
+  default     = "admin"
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password"
+  type        = string
+  sensitive   = true
+  default     = "change-me-grafana"
+}
